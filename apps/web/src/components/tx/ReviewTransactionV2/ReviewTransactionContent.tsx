@@ -18,6 +18,7 @@ import { Button, CircularProgress, Divider } from '@mui/material'
 import CheckWallet from '@/components/common/CheckWallet'
 import { MODALS_EVENTS, trackEvent } from '@/services/analytics'
 import { useSafeShield } from '@/features/safe-shield/SafeShieldContext'
+import { useGuardTxValidation } from '@/features/safe-shield/hooks'
 
 export type ReviewTransactionContentProps = PropsWithChildren<{ onSubmit: SubmitCallback; withDecodedData?: boolean }>
 
@@ -40,6 +41,8 @@ export const ReviewTransactionContent = ({
 }): ReactElement => {
   const { isBatch, isCreation, isRejection, isSubmitLoading, isSubmitDisabled, onlyExecute } = useContext(TxFlowContext)
   const { needsRiskConfirmation, isRiskConfirmed } = safeShield
+  const { invalidGuards, loading: isValidatingGuard } = useGuardTxValidation(safeTx)
+  const isBrickingGuard = invalidGuards.length > 0
   const [readableApprovals] = useApprovalInfos({ safeTransaction: safeTx })
   const isApproval = readableApprovals && readableApprovals.length > 0
 
@@ -79,6 +82,14 @@ export const ReviewTransactionContent = ({
           </ErrorMessage>
         )}
 
+        {isBrickingGuard && (
+          <ErrorMessage level="error">
+            This transaction enables a transaction guard that is not a valid guard contract:{' '}
+            {invalidGuards.map((guard) => guard.address).join(', ')}. Enabling it would permanently brick this Safe and
+            freeze all its assets, so signing is disabled.
+          </ErrorMessage>
+        )}
+
         <Slot name={SlotName.Footer} />
         <NetworkWarning />
         <UnknownContractError txData={txDetails?.txData ?? txPreview?.txData} />
@@ -93,7 +104,13 @@ export const ReviewTransactionContent = ({
                   variant="contained"
                   type="submit"
                   onClick={onContinueClick}
-                  disabled={!isOk || isSubmitDisabled || (needsRiskConfirmation && !isRiskConfirmed)}
+                  disabled={
+                    !isOk ||
+                    isSubmitDisabled ||
+                    (needsRiskConfirmation && !isRiskConfirmed) ||
+                    isBrickingGuard ||
+                    isValidatingGuard
+                  }
                   sx={{ minWidth: '82px', order: '1', width: ['100%', '100%', '100%', 'auto'] }}
                 >
                   {isSubmitLoading ? <CircularProgress size={20} /> : 'Continue'}
